@@ -1,0 +1,104 @@
+library(zCompositions) # CZM
+
+library(dplyr) # Pipe
+
+library(ggplot2) # Plotting
+
+library(vegan) # envfit and diversity
+
+library(ggsci) # Colours
+
+library(ALDEx2) # ALDEx2
+
+#### Load data ####
+#count table = SV by column, samples by row
+counts <- read.table("cutadapt_counts.txt", 
+                     header = TRUE, row.names = 1, sep = "\t", check.names = FALSE, 
+                     quote = "", stringsAsFactors = FALSE)
+tax <- read.table("cutadapt_tax.txt", 
+                  header = TRUE, row.names = 1, sep = "\t", check.names = FALSE, 
+                  quote = "", stringsAsFactors = FALSE)
+
+#### #load meta data table
+
+metadata<-read.table("metadata_oral.txt", header=T, row.names = 1, sep='\t', comment.char = "")
+
+#### Filter ####
+
+# Summarize input counts table
+sum(counts) ; dim(counts) ; summary(colSums(counts)) ; summary(rowSums(counts))
+
+# [1] 8101148
+# [1]  124 2541
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#       0       0      10    3188     113 3582585 
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#    8479   26649   53893   65332   84517  227471 
+
+
+
+# Generate a relative abundance table and remove SVs accounting for < 1% of reads in every sample
+props <- apply(counts, 1, function(x) {x/sum(x)})
+filt_by_props <- counts[, apply(props, 1, max) >= 0.01] 
+
+# calculate frequency minus the final (taxonomy) column
+#d.freq <- apply(filt_by_props, 1, function(x){x/sum(x)})
+#filtered_tax <- tax[colnames(filt_by_props), ]
+#freq <- cbind(filtered_tax,d.freq)
+#write.table(freq, file="cutadapt_proportions.txt", sep='\t')
+
+# Summarize output filtered counts table
+sum(filt_by_props) ; dim(filt_by_props) ; summary(colSums(filt_by_props)) ; summary(rowSums(filt_by_props))
+
+# [1] 7774969
+# [1] 124 164
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#     349    1783    4272   47408   16371 3582585 
+#    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+#    7515   25845   49766   62701   82909  227164 
+
+# Create filtered data frames
+filtered_counts <- counts[rownames(filt_by_props), colnames(filt_by_props)]
+filtered_tax <- tax[colnames(filt_by_props), ]
+filtered_meta <- metadata[rownames(filt_by_props), ]
+
+
+#### PCA ####
+
+# Replace zeros, transform, and perform PCA
+czm <- cmultRepl(filtered_counts, label = 0, method = "CZM")
+clr <- t(apply(czm, 1, function(x) {log(x) - mean(log(x))} ))
+pca <- prcomp(clr)
+
+#write.table(t(clr), file="cutadapt_counts_CLR.txt", sep='\t')
+# Assemble PCA biplot
+sample_positions <- data.frame(pca[["x"]])
+asv_positions <- data.frame(pca[["rotation"]])
+
+sample_plot_data <- merge(sample_positions, filtered_meta, by = 0)
+rownames(sample_plot_data) <- sample_plot_data$Row.names
+sample_plot_data$Row.names <- NULL
+
+sample_plot_data$Cohort<-factor(sample_plot_data$Cohort, levels=c("hc","sf"))
+cols <- c("hc" = "#492675", "sf" = "#EF8863")
+
+
+pca_biplot <- ggplot() +
+  geom_point(data = sample_plot_data, aes(x = PC1, y = PC2, colour=Cohort), size = 2.5) +
+  stat_ellipse(data = sample_plot_data, aes(x = PC1, y = PC2, colour = Cohort), geom = "polygon", level = 0.95, alpha = 0.025, show.legend = NA, linetype = "dashed") +
+  #scale_shape_manual(values = c(21, 24)) +
+  scale_colour_manual(values = cols) +
+  guides(fill = guide_legend(override.aes = list(shape = 21))) +
+  geom_segment(data = asv_positions, aes(x = 0, y = 0, xend = 80 * PC1, yend = 80 * PC2), 
+               arrow = arrow(length = unit(1/2, 'picas')),
+               color = "black",
+               alpha = 0.3) + 
+  geom_text(data = asv_positions, aes(x = 80 * PC1, y = 80 * PC2), check_overlap = T,
+            label = rownames(asv_positions),
+            color = "darkgrey",
+            size = 2.5) + 
+  labs(x = paste("PC1: ", round(pca$sdev[1]^2/sum(pca$sdev^2),3)), 
+       y = paste("PC2: ", round(pca$sdev[2]^2/sum(pca$sdev^2),3))) + 
+  theme_linedraw() +
+  theme(panel.grid = element_blank())
+pca_biplot

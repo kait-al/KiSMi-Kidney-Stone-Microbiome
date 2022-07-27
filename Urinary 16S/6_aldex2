@@ -61,3 +61,93 @@ sig <- which(x.tt$we.eBH < 0.05)
 sig
 
 #write a .txt with your results for different comparison groups
+
+
+############################################################################################################################################
+#Repeat with Picrust2 functional output
+
+library(compositions)
+library(zCompositions)
+library(vegan)
+library(CoDaSeq)
+library(Maaslin2)
+
+################################################
+#EC enzymes
+################################################
+d<-read.table("data/pred_metagenome_unstrat.tsv", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+
+#picrust output countains decimals, round to 0 digits
+d.1<-round(d, digits=0)
+#write.table(d.1, file="data/pred_metagenome_unstrat_rounded.txt", sep="\t", quote=F, col.names=NA)
+
+#merge to get identical metadata and df sample IDs
+d.2 <- t(d.1)
+dm <- merge(d.2, m, by = "row.names", all.y=FALSE)
+#write.table(dm, file="data/pred_metagenome_unstrat_rounded_working.txt", sep='\t')
+
+
+#reload new table
+d<-read.table("data/pred_metagenome_unstrat_rounded_working.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+d.1 <- data.frame(t(d))
+
+# Can't have zeroes. Bayesian-Multiplicative replacement of count zeros
+d.czm <- cmultRepl(t(d.1),  label=0, method="CZM")
+
+#Centre-log-ratio transform the data
+d.clr<-apply(d.czm, 2, function(x){log2(x) - mean(log2(x))})
+
+#calculate principal components
+#features are COLUMNS
+#samples as ROWS
+d.pcx <- prcomp(d.clr)
+
+m <- read.table("metadata.txt", header=T, sep='\t', comment.char = "", row.names=1)
+m <- data.frame(m)
+
+fit1 <- envfit(d.pcx, data.frame(m[, c("Cohort","SampleTime","Sample","Time","BC_L","BC_R","Age","Sex","Weight_kg","Height_cm","BMI","PCNL_URS","Hx_Stone","UTI","UTI_Recent","Abx_Recent","StoneType"), drop = FALSE]), permutations = 999, na.rm = TRUE)
+fit1
+
+#Stone-formers Pre-Op urine
+# n = 84
+SPU<-c("X101_PU","X102_PU","X103_PU","X104_PU","X105_PU","X106_PU","X107_PU1","X107_PU2","X108_PU","X109_PU","X110_PU","X111_PU","X112_PU","X113_PU","X114_PU","X115_PU","X116_PU","X117_PU","X118_PU","X119_PU","X120_PU","X121_PU","X122_PU","X123_PU","X124_PU","X125_PU","X126_PU","X127_PU","X128_PU","X129_PU","X130_PU","X131_PU","X132_PU","X133_PU","X134_PU","X135_PU","X136_PU","X137_PU","X138_PU","X139_PU","X140_PU","X141_PU","X142_PU","X143_PU","X144_PU","X145_PU","X146_PU","X147_PU","X148_PU","X149_PU","X150_PU","X151_PU","X152_PU","X153_PU","X154_PU","X155_PU","X156_PU","X157_PU","X158_PU","X159_PU","X160_PU","X161_PU","X162_PU","X163_PU","X164_PU","X165_PU","X166_PU","X167_PU","X168_PU","X169_PU","X170_PU","X171_PU","X172_PU","X173_PU","X174_PU","X175_PU","X176_PU","X177_PU","X178_PU","X179_PU","X180_PU","X181_PU","X182_PU","X183_PU","X184_PU")
+
+#Stone-formers OR urine
+# n = 59 after filtering
+SOU<-c("X101_OU","X102_OU","X103_OU","X104_OU","X105_OU","X106_OU","X112_OU","X114_OU","X115_OU","X116_OU","X119_OU","X120_OU","X121_OU","X122_OU","X123_OU","X125_OU","X126_OU","X127_OU","X128_OU","X130_OU","X132_OU","X133_OU","X135_OU","X136_OU","X137_OU","X140_OU","X141_OU","X142_OU","X143_OU","X144_OU","X145_OU","X146_OU","X147_OU","X149_OU","X151_OU","X152_OU","X154_OU","X155_OU","X156_OU","X158_OU","X160_OU","X161_OU","X162_OU","X163_OU","X165_OU","X166_OU","X167_OU","X168_OU","X169_OU","X171_OU","X172_OU","X174_OU","X175_OU","X176_OU","X177_OU","X178_OU","X179_OU","X183_OU","X184_OU")
+
+#Healthy control urine samples
+# n = 25 after filtering
+HCU<-c("X450_PU","X451_PU","X452_PU","X453_PU","X454_PU","X455_PU","X457_PU","X458_PU","X459_PU","X460_PU","X462_PU","X463_PU","X464_PU","X465_PU","X467_PU","X469_PU","X470_PU","X471_PU","X472_PU","X474_PU","X475_PU","X476_PU","X477_PU","X478_PU","X479_PU")
+
+#Stone samples
+#n = 30
+ST<-c("X000_CYSTINE","X101_S_L","X101_S_R","X103_S","X104_S","X105_S","X106_S","X107_S","X110_S","X111_S","X116_S","X119_S","X122_S_1","X122_S_2","X122_S_3","X125_S","X126_S","X127_S","X130_S","X134_S","X136_S","X137_S","X144_S","X152_S","X153_S","X160_S","X167_S","X172_S","X175_S","X177_S_2","X178_S_1","X178_S_2","X182_S","X184_S")
+
+#this will retain the same order as the lists above
+# NOTE: ALDEx input must be a DATA FRAME *not* a matrix
+aldex.in<-d.1[,c(HCU, SPU)]
+
+#Make a vector of conditions. This must be in the same order and the same number as the columns (samples) of the input table (aldex.in)
+conds<-c(rep("HCU", length(HCU)), rep("SPU", length(SPU)))
+
+#get the clr values
+#this is the main ALDEx function for all downstream analyses
+#mc.samples=128 is often sufficient
+x <- aldex.clr(aldex.in, conds, mc.samples=128, verbose=TRUE)
+
+#perform t-test (both Welches and Wilcoxon, plus a Benjamini-Hochberg multiple test correction)
+x.tt <- aldex.ttest(x, conds, paired.test=FALSE)
+
+#estimate effect size and the within and between condition values
+#include indiv. samples or not
+x.effect <- aldex.effect(x, conds)
+
+#merge the data
+x.all <- data.frame(x.tt, x.effect)
+
+#get features passing significance
+sig <- which(x.tt$we.eBH < 0.05)
+sig
+
+#write a .txt with your results, repeat with pathways (path_abun_unstrat.tsv)

@@ -1,0 +1,70 @@
+
+library(ggplot2)
+library(phyloseq)
+library(decontam)
+library(ggplot2)
+
+
+#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+# Import OTU, TAX, and METADATA tables as a phyloseq object
+#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+# Import OTU/ASV table as a matrix
+OTU_import <- as.matrix(read.table("features.txt", header=TRUE, sep = "\t",
+                                      row.names = 1,
+                                      as.is=TRUE))
+OTU = otu_table(OTU_import, taxa_are_rows = TRUE)
+
+# Import Taxonomy table as a matrix
+TAX_import <- as.matrix(read.table("tax.txt", header=TRUE, sep = "\t",
+                            row.names = 1,
+                            as.is=TRUE))
+TAX = tax_table(TAX_import)
+
+# METADATA need to be dataframe
+samples<-read.table("meta.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+sampledata = sample_data(data.frame(samples))
+
+#make phyloseq object
+ps <-phyloseq(OTU, TAX, sampledata)
+
+#"ps" should look something like this:
+
+#phyloseq-class experiment-level object
+#otu_table()   OTU Table:         [ 81 taxa and 232 samples ]
+#sample_data() Sample Data:       [ 232 samples by 1 sample variables ]
+#tax_table()   Taxonomy Table:    [ 81 taxa by 6 taxonomic ranks ]
+
+#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+#Inspect Library Sizes
+#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+df <- as.data.frame(sample_data(ps)) # Put sample_data into a ggplot-friendly data.frame
+df$LibrarySize <- sample_sums(ps)
+df <- df[order(df$LibrarySize),]
+df$Index <- seq(nrow(df))
+ggplot(data=df, aes(x=Index, y=LibrarySize, color=Sample_or_Control)) + geom_point()
+
+
+#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+#Identify Contaminants - Prevalence
+#::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+sample_data(ps)$is.neg <- sample_data(ps)$Sample_or_Control == "Control"
+
+contamdf.prev <- isContaminant(ps, conc = NULL, neg = "is.neg", method = "prevalence")
+table(contamdf.prev$contaminant)
+
+head(which(contamdf.prev$contaminant))
+
+contamdf.prev01 <- isContaminant(ps, method="prevalence", neg="is.neg", threshold=0.1)
+table(contamdf.prev01$contaminant)
+
+ps.pa <- transform_sample_counts(ps, function(abund) 1*(abund>0))
+ps.pa.neg <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Control", ps.pa)
+ps.pa.pos <- prune_samples(sample_data(ps.pa)$Sample_or_Control == "Sample", ps.pa)
+# Make data.frame of prevalence in positive and negative samples
+df.pa <- data.frame(pa.pos=taxa_sums(ps.pa.pos), pa.neg=taxa_sums(ps.pa.neg),
+                    contaminant=contamdf.prev01$contaminant)
+ggplot(data=df.pa, aes(x=pa.neg, y=pa.pos, color=contaminant)) + geom_point() +
+  xlab("Prevalence (Negative Controls)") + ylab("Prevalence (True Samples)")
+
+
+write.table(contamdf.prev01, file="contamdf.prev01.txt", sep="\t",  quote=F) #Kingdom to Species

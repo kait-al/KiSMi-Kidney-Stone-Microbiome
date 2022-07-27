@@ -102,3 +102,36 @@ pca_biplot <- ggplot() +
   theme_linedraw() +
   theme(panel.grid = element_blank())
 pca_biplot
+
+fit1 <- envfit(pca, filtered_meta, permutations = 999, na.rm = TRUE)
+fit1 #shows factor and categorical data
+
+#aldex2
+d<-t(filtered_counts)
+hc<-c("H_450","H_451","H_452","H_453","H_454","H_455","H_456","H_457","H_458","H_459","H_459a","H_460","H_461","H_462","H_463","H_464","H_465","H_466","H_467","H_468","H_469","H_470","H_471","H_472","H_473","H_474","H_475","H_476","H_477","H_478","H_479")
+sf<-c("S_101","S_102","S_103","S_104","S_105","S_106","S_107","S_107a","S_108","S_109","S_110","S_111","S_112","S_113","S_114","S_115","S_116","S_117","S_118","S_119","S_120","S_121","S_122","S_123","S_124","S_125","S_126","S_127","S_128","S_129","S_130","S_131","S_132","S_133","S_134","S_135","S_136","S_137","S_138","S_139","S_140","S_141","S_142","S_143","S_144","S_145","S_146","S_147","S_148","S_149","S_150","S_151","S_152","S_153","S_154","S_155","S_156","S_157","S_158","S_159","S_160","S_161","S_162","S_163","S_164","S_165","S_166","S_167","S_168","S_169","S_170","S_171","S_172","S_173","S_174","S_175","S_176","S_177","S_178","S_179","S_180","S_181","S_182","S_183","S_184")
+
+#this will retain the same order as the lists above
+# NOTE: ALDEx input must be a DATA FRAME *not* a matrix
+aldex.in<-d[,c(hc,sf)]
+
+#Make a vector of conditions. This must be in the same order and the same number as the columns (samples) of the input table (aldex.in)
+conds<-c(rep("hc", length(hc)), rep("sf", length(sf)))
+
+#get the clr values
+#this is the main ALDEx function for all downstream analyses
+#mc.samples=128 is often sufficient
+x <- aldex.clr(aldex.in, conds, mc.samples=999, verbose=TRUE)
+
+#perform t-test (both Welches and Wilcoxon, plus a Benjamini-Hochberg multiple test correction)
+x.tt <- aldex.ttest(x, conds, paired.test=FALSE)
+
+#estimate effect size and the within and between condition values
+#include indiv. samples or not
+x.effect <- aldex.effect(x, conds)
+
+#merge the data
+x.all <- data.frame(x.tt, x.effect)
+
+#write a .txt with your results
+write.table(x.all, file="aldex_hc_sf.txt", sep="\t", quote=F, col.names=NA)

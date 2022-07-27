@@ -1,0 +1,122 @@
+library(phyloseq)
+library(dplyr)
+library(microbiome)
+
+#build phyloseq object from untrimmed counts file
+dm<-read.table("dada2_nochim_tax.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+#from dyplyr, remove taxonomy column
+dm.1<-select(dm, -tax.vector)
+
+tax<-read.table("tax_phylo.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+tax<-as.matrix(tax) 
+
+OTU = otu_table(dm.1, taxa_are_rows = TRUE)
+TAX = tax_table(tax)
+
+meta<-read.table("Metadata2.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+sampledata = sample_data(meta)
+
+physeq = phyloseq(OTU, TAX, sampledata)
+physeq
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 935 taxa and 276 samples ]
+# sample_data() Sample Data:       [ 276 samples by 50 sample variables ]
+# tax_table()   Taxonomy Table:    [ 935 taxa by 7 taxonomic ranks ]
+
+
+#calculate alpha diversity for each individual sample
+#measures = NULL means all measures will be calculated (shannon's, chao1, simpson, etc)
+div<- estimate_richness(physeq, split = TRUE, measures = NULL)
+
+#from microbiome R package, calculate the Berger-Parker dominance index
+dom<- dominance(physeq,  relative = TRUE, aggregate = FALSE)
+
+#merge the data
+div_all <- data.frame(div, dom)
+
+# Write out the file
+#import the "type" column to sort samples in graphpad
+write.table(div_all, file="alpha_diversity_phyloseq.txt", sep="\t")
+
+##############################################################################
+#alpha diversity statistics
+# Load required R packages
+library(tidyverse)
+library(rstatix)
+library(ggpubr)
+library(plyr)
+library(matrixTests)
+
+d <- read.table("alpha_diversity_phyloseq.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+#remove technical controls
+df<-d[!(d$type=="Control" | d$type=="OR_EC"),]
+
+df %>%
+  group_by(type) %>%
+  get_summary_stats(Shannon, type = "mean_sd")  
+# # A tibble: 4 × 5
+#   type     variable     n  mean    sd
+#   <chr>    <chr>    <dbl> <dbl> <dbl>
+# 1 Cont_U   Shannon     30  2.19 0.626
+# 2 OR_Urine Shannon     66  1.59 0.711
+# 3 PreOp_U  Shannon     85  2.11 0.901
+# 4 Stone    Shannon     47  1.62 0.578
+
+# Compute the analysis of variance
+res.aov <- aov(Shannon ~ type, data = df)
+# Summary of the analysis
+summary(res.aov)
+#              Df Sum Sq Mean Sq F value  Pr(>F)    
+# type          3  16.14    5.38   9.431 6.8e-06 ***
+# Residuals   224 127.77    0.57                    
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+# Pairwise comparisons?
+tuk_obs <- df %>%
+  tukey_hsd(Observed ~ type)
+
+tuk_chao <- df %>%
+  tukey_hsd(Chao1 ~ type)
+
+tuk_sechao <- df %>%
+  tukey_hsd(se.chao1 ~ type)
+
+tuk_ace <- df %>%
+  tukey_hsd(ACE ~ type)
+
+tuk_seace <- df %>%
+  tukey_hsd(se.ACE ~ type)
+
+tuk_shan <- df %>%
+  tukey_hsd(Shannon ~ type)
+
+tuk_simp <- df %>%
+  tukey_hsd(Simpson ~ type)
+
+tuk_invsimp <- df %>%
+  tukey_hsd(InvSimpson ~ type)
+
+tuk_fish <- df %>%
+  tukey_hsd(Fisher ~ type)
+
+tuk_dbp <- df %>%
+  tukey_hsd(dbp ~ type)
+
+tuk_dmn <- df %>%
+  tukey_hsd(dmn ~ type)
+
+tuk_abs <- df %>%
+  tukey_hsd(absolute ~ type)
+
+tuk_rel <- df %>%
+  tukey_hsd(relative ~ type)
+
+tuk_core <- df %>%
+  tukey_hsd(core_abundance ~ type)
+
+tuk_gini <- df %>%
+  tukey_hsd(gini ~ type)
+
+alpha_anova <- rbind(tuk_obs, tuk_chao, tuk_sechao, tuk_ace, tuk_seace, tuk_shan, tuk_simp, tuk_invsimp, tuk_fish, tuk_dbp, tuk_dmn, tuk_abs, tuk_rel, tuk_core, tuk_gini)
+write.table(alpha_anova, file="alpha_div_anova2.txt", sep='\t')

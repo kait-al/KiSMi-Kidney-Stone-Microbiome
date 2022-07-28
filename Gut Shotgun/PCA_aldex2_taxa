@@ -1,0 +1,53 @@
+library(zCompositions)
+library(ggplot2)
+library(ALDEx2)
+
+### Analysis of the bin mapping data ###
+
+# PCA of 
+d <- read.table("new_bin_mapping.tsv",header = T,row.names = 1, sep = "\t", quote = "",stringsAsFactors = F,check.names = F)
+d.1 <- data.frame(d[which(apply(d, 1, function(x){mean(x)}) > 100),], check.names=F)
+d.clr <- apply(d.1 + 0.4, 2, function(x){log(x) - mean(log(x))})
+d.pcx <- prcomp(t(d.clr))
+d.mvar <- sum(d.pcx$sdev^2)
+PC1 <- paste("PC1: ", round(sum(d.pcx$sdev[1]^2)/d.mvar, 3))
+PC2 <- paste("PC2: ", round(sum(d.pcx$sdev[2]^2)/d.mvar, 3))
+col <- character()
+conds <- character()
+for(i in 1:ncol(d)){
+  if(as.numeric(colnames(d)[i]) >= 400){
+    col <- c(col,"blue")
+  }
+  if(as.numeric(colnames(d)[i]) < 400){
+    col <- c(col,"orange")
+  }
+}
+for(i in 1:ncol(d)){
+  if(as.numeric(colnames(d)[i]) >= 400){
+    conds <- c(conds,"case")
+  }
+  if(as.numeric(colnames(d)[i]) < 400){
+    conds <- c(conds,"control")
+  }
+}
+pcx.df <- as.data.frame(d.pcx$x)
+d.biplot <- ggplot(data = pcx.df, aes(x=PC1,y=PC2)) + geom_point(colour=col)+geom_text(aes(label=colnames(d),hjust=-0.2),size=2) + xlab(PC1) +ylab(PC2)+stat_ellipse(data = pcx.df,aes(x=PC1,y=PC2, linetype = col,colour=col, fill=col), geom = "polygon",alpha=0.2)+ scale_color_manual(values = c("blue","orange")) + scale_fill_manual(values = c("blue","orange"))+ theme(legend.position = "none",panel.background = element_blank(),axis.line = element_line(colour = "black",size = 0.5))
+ggsave("bin_mapping_biplot.pdf",plot=d.biplot,device = "pdf")
+
+# ALDEx2 analysis
+x <- aldex.clr(d,conds,mc.samples = 128)
+x.tt <- aldex.ttest(x, conds, paired.test=FALSE)
+x.effect <- aldex.effect(x, conds, include.sample.summary=FALSE, verbose=TRUE)
+x.all <- data.frame(x.tt, x.effect, stringsAsFactors=FALSE)
+write.table(x.all, file="bin_mapping_aldex_output.txt", sep="\t", quote=F, col.names=NA)
+aldex.plot(x.all, type="MA", test="welch")
+
+pdf("bin_mapping_MWplot.pdf")
+aldex.plot(x.all, type="MW", test="welch")
+dev.off()
+sig.case <- x.all[which(x.all$we.eBH < 0.1 & x.all$effect < -0.5),]
+sig.control <- x.all[which(x.all$we.eBH < 0.1 & x.all$effect > 0.5),]
+tax <- read.table("phylophlan_reformatted.tsv",row.names = 1, sep = "\t", quote = "",stringsAsFactors = F,check.names = F)
+sig <- rbind(sig.case,sig.control)
+sig <- cbind(sig,tax[rownames(sig),])
+write.table(sig, "bin_mapping_most_sig.txt", sep="\t", quote = F)

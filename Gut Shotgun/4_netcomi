@@ -1,0 +1,171 @@
+library(phyloseq)
+library(NetCoMi)
+library(metagMisc)
+library(zCompositions)
+library(compositions)
+library(igraph)
+
+
+#build phyloseq object from bin_mapping taxonomy file
+dm<-read.table("new_bin_mapping2.tsv", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+#otu <- apply(dm, 2, function(x){x/sum(x)})
+
+#SET CUTOFF ----- common ones are ----> (0.05 = 5% abundance   |   0.01 = 1% abundance  |   0.001 = 0.1% abundance   |   etc...)
+# so abund 0.001 and prev = 0.5 means the taxa must be present at at least 0.1% abundance in 10% of the samples
+#any lower just makes the network unmanageable
+abund.cut = 0.0001
+prev.cut = 0.5
+
+#if you dont want an abundance cutoff, you cant use 0. just use a verrrrrry small abundance instead
+#abund.cut = 0.000000000000000000000000001
+
+d.2 <- data.frame(dm[apply(apply(dm, 2, function(x){x/sum(x)}), 1, function(x) mean(x>=abund.cut)>=prev.cut),], check.names=F, stringsAsFactors=FALSE) 
+
+
+tax<-read.table("phylophlan_reformatted.tsv", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+tax<-as.matrix(tax)
+
+OTU = otu_table(d.2, taxa_are_rows = TRUE)
+TAX = tax_table(tax)
+
+meta<-read.table("metadata_maaslin.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+sampledata = sample_data(meta)
+ids<-colnames(dm)
+
+physeq2 = phyloseq(OTU, TAX, sampledata)
+physeq2
+#phyloseq-class experiment-level object
+#otu_table()   OTU Table:         [ 593 taxa and 61 samples ]
+#sample_data() Sample Data:       [ 61 samples by 32 sample variables ]
+#tax_table()   Taxonomy Table:    [ 593 taxa by 7 taxonomic ranks ]
+
+
+#get groups of interest based on metadata
+stone <- phyloseq::subset_samples(physeq2, Cohort == "stone")
+hc  <- phyloseq::subset_samples(physeq2, Cohort == "hc")
+
+#filter out tax bins not present in 10% samples and with at least 10 reads
+#but the dimensions of the phyloseq object dont change so all bins meet that criteria...
+#stone.filt = metagMisc::phyloseq_filter_prevalence(stone, prev.trh = 0.1, abund.trh = 100, threshold_condition = "AND", abund.type = "total")
+#hc.filt = metagMisc::phyloseq_filter_prevalence(hc, prev.trh = 0.1, abund.trh = NULL, threshold_condition = "OR", abund.type = "total")
+
+net_bin <- netConstruct(hc, stone, normMethod="clr", zeroMethod = "bayesMult", sparsMethod="bootstrap", nboot=1000, adjust="adaptBH", alpha=0.05, measure="pearson")
+                           
+net_double_bin <- netAnalyze(net_bin, clustMethod = "cluster_fast_greedy",  hubPar = "eigenvector", verbose =2)
+summary(net_double_bin)
+
+p_bin <- plot(net_double_bin, 
+          nodeSize = "mclr",
+          sameLayout = TRUE,
+          layoutGroup = "union",
+          nodeColor = "cluster",
+          nodeFilter = "highestDegree",
+          nodeFilterPar = 50,
+          #edgeFilter = "highestWeight",
+          #edgeFilterPar = 200,
+          shortenLabels = "none",
+          nodeTransp = 50,
+          repulsion = 0.8,
+          rmSingles = "inboth",
+          labelScale = FALSE,
+          cexLabels = 0,
+          nodeSizeSpread = 4,
+          #cexNodes = 2,
+          cexTitle = 1.5,
+          layout = "spring",
+          groupNames = c("Healthy Controls", "Stone Formers")
+          )
+#save image as hc_sf_bin_pearson1000bs_union_50degree.pdf
+
+###Quantitative network comparison
+
+comp_genus <- netCompare(net_double_bin, permTest = TRUE, verbose = TRUE)
+
+summary(comp_genus, 
+        groupNames = c("HC", "SF"))
+
+########################################################################################################################
+#functional pathways
+library(phyloseq)
+library(NetCoMi)
+library(metagMisc)
+library(zCompositions)
+library(compositions)
+library(igraph)
+
+
+#build phyloseq object from bin_mapping taxonomy file
+dm<-read.table("humann3_pathabundance_cpm_unstratified.tsv", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+#otu <- apply(dm, 2, function(x){x/sum(x)})
+
+#SET CUTOFF ----- common ones are ----> (0.05 = 5% abundance   |   0.01 = 1% abundance  |   0.001 = 0.1% abundance   |   etc...)
+# so abund 0.001 and prev = 0.5 means the taxa must be present at at least 0.1% abundance in 10% of the samples
+#any lower just makes the network unmanageable
+abund.cut = 0.001
+prev.cut = 0.5
+
+#if you dont want an abundance cutoff, you cant use 0. just use a verrrrrry small abundance instead
+#abund.cut = 0.000000000000000000000000001
+
+d.2 <- data.frame(dm[apply(apply(dm, 2, function(x){x/sum(x)}), 1, function(x) mean(x>=abund.cut)>=prev.cut),], check.names=F, stringsAsFactors=FALSE) 
+
+
+tax<-read.table("PW_tax.tsv", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+tax<-as.matrix(tax)
+
+OTU = otu_table(d.2, taxa_are_rows = TRUE)
+TAX = tax_table(tax)
+
+meta<-read.table("metadata_maaslin.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+sampledata = sample_data(meta)
+ids<-colnames(dm)
+
+physeq2 = phyloseq(OTU, TAX, sampledata)
+physeq2
+#phyloseq-class experiment-level object
+#otu_table()   OTU Table:         [ 187 taxa and 61 samples ]
+#sample_data() Sample Data:       [ 61 samples by 32 sample variables ]
+#tax_table()   Taxonomy Table:    [ 187 taxa by 1 taxonomic ranks ]
+
+#get groups of interest based on metadata
+stone <- phyloseq::subset_samples(physeq2, Cohort == "stone")
+hc  <- phyloseq::subset_samples(physeq2, Cohort == "hc")
+
+#filter out tax bins not present in 10% samples and with at least 10 reads
+#but the dimensions of the phyloseq object dont change so all bins meet that criteria...
+#stone.filt = metagMisc::phyloseq_filter_prevalence(stone, prev.trh = 0.1, abund.trh = 100, threshold_condition = "AND", abund.type = "total")
+#hc.filt = metagMisc::phyloseq_filter_prevalence(hc, prev.trh = 0.1, abund.trh = NULL, threshold_condition = "OR", abund.type = "total")
+
+net_pw <- netConstruct(hc, stone, normMethod="clr", zeroMethod = "bayesMult", sparsMethod="bootstrap", nboot=1000, adjust="adaptBH", alpha=0.05, measure="pearson")
+                           
+net_double_pw <- netAnalyze(net_pw, clustMethod = "cluster_fast_greedy",  hubPar = "eigenvector", verbose=2)
+summary(net_double_pw)
+
+p_pw <- plot(net_double_pw, 
+          nodeSize = "fix",
+          sameLayout = TRUE,
+          layoutGroup = "union",
+          nodeColor = "cluster",
+          nodeFilter = "highestDegree",
+          nodeFilterPar = 80,
+          edgeFilter = "highestWeight",
+          edgeFilterPar = 1000,
+          shortenLabels = "none",
+          nodeTransp = 50,
+          repulsion = 0.8,
+          rmSingles = "inboth",
+          labelScale = FALSE,
+          cexLabels = 0.2,
+          nodeSizeSpread = 4,
+          #cexNodes = 2,
+          cexTitle = 2,
+          layout = "spring",
+          groupNames = c("Healthy Controls", "Stone Formers")
+          )
+#save image as hc_sf_humann3PW_pearson1000bs_25degree.pdf
+
+###Quantitative network comparison
+
+comp_pw <- netCompare(net_double_pw, permTest = FALSE, verbose = TRUE)
+
+summary(comp_pw, groupNames = c("HC", "SF"))

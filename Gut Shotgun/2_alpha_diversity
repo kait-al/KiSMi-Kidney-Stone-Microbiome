@@ -1,0 +1,49 @@
+#/Users/kait/Documents/Research/KiSMMe/ShotgunMetagenomics/2020/
+
+library(phyloseq)
+library(dplyr)
+library(microbiome)
+
+#build phyloseq object from untrimmed counts file
+dm<-read.table("new_bin_mapping.tsv", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+#from dyplyr, remove S_153 column outlier
+dm.1<-select(dm, -S_153)
+
+
+tax<-read.table("phylophlan_reformatted_working.tsv", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+tax<-as.matrix(tax) 
+
+OTU = otu_table(dm.1, taxa_are_rows = TRUE)
+TAX = tax_table(tax)
+
+physeq = phyloseq(OTU, TAX)
+physeq
+# phyloseq-class experiment-level object
+# otu_table()   OTU Table:         [ 1453 taxa and 60 samples ]
+# tax_table()   Taxonomy Table:    [ 1453 taxa by 7 taxonomic ranks ]
+
+#calculate alpha diversity for each individual sample
+#measures = NULL means all measures will be calculated (shannon's, chao1, simpson, etc)
+div<- estimate_richness(physeq, split = TRUE, measures = NULL)
+
+#from microbiome R package, calculate the Berger-Parker dominance index
+dom<- dominance(physeq,  relative = TRUE, aggregate = FALSE)
+
+#merge the data
+div_all <- data.frame(div, dom)
+
+# Write out the file
+#import the "type" column to sort samples in graphpad
+write.table(div_all, file="alpha_diversity_phyloseq_bins_no153.txt", sep="\t")
+
+#####
+#Stats
+
+library(matrixTests)
+
+d <- read.table("alpha_diversity_phyloseq_bins_no153.txt", sep="\t", quote="", check.names=F, header=T, row.names=1, comment.char="")
+td <- t(d)
+
+t_results <- row_t_welch(td[,c("S_101","S_103","S_105","S_106","S_107","S_108","S_110","S_111","S_116","S_117","S_118","S_125","S_127","S_129","S_131","S_133","S_138","S_141","S_143","S_144","S_146","S_152","S_155","S_156","S_157","S_159","S_160","S_162","S_165","S_167","S_169","S_172","S_176","S_178","S_183")], td[,c("H_450","H_451","H_452","H_453","H_454","H_455","H_456","H_457","H_458","H_459","H_460","H_462","H_463","H_464","H_465","H_466","H_467","H_469","H_471","H_472","H_473","H_475","H_476","H_477","H_479")])
+
+write.table(t_results, file='ttest_results_alpha_gut.txt', sep='\t')
